@@ -30,7 +30,10 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    GENDER_CHOICES = [("male", "Male"), ("female", "Female"), ("other", "Other")]
+    class Meta:
+        app_label = 'api'
+
+    GENDER_CHOICES = [('male', 'Male'), ('female', 'Female'), ('other', 'Other')]
 
     name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
@@ -47,6 +50,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
+    # Add this field
+    social_provider = models.CharField(max_length=20, null=True, blank=True)  # facebook, linkedin, instagram
 
     groups = models.ManyToManyField(
         Group, related_name="custom_user_groups", blank=True
@@ -71,3 +76,34 @@ class Person(models.Model):
 
     def __str__(self):
         return self.name
+
+    # Add these new fields
+    social_provider = models.CharField(max_length=20, null=True)  # facebook, linkedin, instagram, twitter
+    social_id = models.CharField(max_length=255, null=True)
+    social_token = models.TextField(null=True)
+    social_refresh_token = models.TextField(null=True)
+    social_token_expires = models.DateTimeField(null=True)
+
+
+class SocialMediaCredentials(models.Model):
+    PLATFORM_CHOICES = [
+        ('facebook', 'Facebook'),
+        ('linkedin', 'LinkedIn'),
+        ('instagram', 'Instagram'),
+        ('twitter', 'Twitter')
+    ]
+
+    username = models.CharField(max_length=255)
+    password = models.CharField(max_length=255)
+    platform_name = models.CharField(max_length=50, choices=PLATFORM_CHOICES)
+    platform_logo = models.URLField(blank=True, null=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_credentials')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['user', 'platform_name']
+        db_table = 'social_media_credentials'
+
+    def __str__(self):
+        return f"{self.user.email} - {self.platform_name}"

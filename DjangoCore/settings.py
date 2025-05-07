@@ -14,6 +14,7 @@ import os
 from decouple import config
 from pathlib import Path
 
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -95,17 +96,17 @@ DATABASES = {
 
 # OAuth 2.0 Authentication (Google, Facebook, LinkedIn)
 AUTHENTICATION_BACKENDS = (
-    "social_core.backends.google.GoogleOAuth2",
     "social_core.backends.facebook.FacebookOAuth2",
     "social_core.backends.linkedin.LinkedinOAuth2",
     "django.contrib.auth.backends.ModelBackend",
 )
 
-SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = config("GOOGLE_CLIENT_ID")
-SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = config("GOOGLE_CLIENT_SECRET")
+# SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = config("GOOGLE_CLIENT_ID")
+# SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = config("GOOGLE_CLIENT_SECRET")
 
-SOCIAL_AUTH_FACEBOOK_KEY = config("FACEBOOK_CLIENT_ID")
-SOCIAL_AUTH_FACEBOOK_SECRET = config("FACEBOOK_CLIENT_SECRET")
+
+
+
 
 SOCIAL_AUTH_LINKEDIN_OAUTH2_KEY = config("LINKEDIN_CLIENT_ID")
 SOCIAL_AUTH_LINKEDIN_OAUTH2_SECRET = config("LINKEDIN_CLIENT_SECRET")
@@ -115,6 +116,17 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=14),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 # CORS Configuration
@@ -169,3 +181,22 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+# Change this line from
+AUTH_USER_MODEL = 'users.User'
+# to
+AUTH_USER_MODEL = 'api.User'
+
+INSTAGRAM_APP_ID="1239687471059342"
+INSTAGRAM_APP_SECRET="c741ad9e4be85144837940b63d8ec5a2"
+FACEBOOK_APP_ID="1443883679928526"
+FACEBOOK_APP_SECRET="9f5ccb7f26a2cf42cf57eac227a2578f"
+LINKEDIN_CLIENT_ID="86e36wve52muat"
+LINKEDIN_CLIENT_SECRET="WPL_AP1.Ll0mJ95VG9bZJSf2.WrN+Mw=="
+
+# Change these lines
+SOCIAL_AUTH_FACEBOOK_KEY = config("FACEBOOK_APP_ID")
+SOCIAL_AUTH_FACEBOOK_SECRET = config("FACEBOOK_APP_SECRET")
+
+# Add these lines for direct access
+FACEBOOK_CLIENT_ID = config("FACEBOOK_APP_ID")
+FACEBOOK_CLIENT_SECRET = config("FACEBOOK_APP_SECRET")

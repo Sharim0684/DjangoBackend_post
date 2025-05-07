@@ -9,6 +9,13 @@ import jwt
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.utils.timezone import now
+from rest_framework import permissions
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+import requests
+import uuid  # Add this import
+
 
 from .models import User, Person
 from .serializers import SignupSerializer, PersonSerializer
@@ -91,12 +98,7 @@ class LoginAPIView(APIView):
 
 
 class PersonViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for handling Person model API endpoints.
-    Provides GET (list & retrieve), POST (create), PUT (update), PATCH (partial update), and DELETE operations.
-    Also supports filtering, searching, and sorting.
-    """
-
+    permission_classes = [permissions.IsAuthenticated]  # Add this line
     queryset = Person.objects.all()
     serializer_class = PersonSerializer
     filter_backends = [filters.OrderingFilter, filters.SearchFilter]
@@ -175,3 +177,166 @@ def health_check(request):
     A simple API view to check if the API is up and running.
     """
     return Response({"status": "API is up and running!"})
+
+
+class SocialLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def get_provider(self, request):
+        # Extract provider from URL path
+        path = request.path
+        if 'facebook' in path:
+            return 'facebook'
+        elif 'instagram' in path:
+            return 'instagram'
+        elif 'linkedin' in path:
+            return 'linkedin'
+        return None
+
+    def post(self, request, *args, **kwargs):
+        provider = self.get_provider(request)
+        if not provider:
+            return Response({'error': 'Invalid provider'}, status=status.HTTP_400_BAD_REQUEST)
+
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        if not username or not password:
+            return Response({
+                'error': 'Username and password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Try to find user by email, phone number, or Instagram username
+            try:
+                if '@' in username:
+                    user = User.objects.get(email=username)
+                elif username.isdigit():
+                    user = User.objects.get(phone_number=username)
+                else:
+                    # For Instagram usernames
+                    user = User.objects.get(name=username)
+                
+                # Update user if needed
+                if not user.social_provider:
+                    user.social_provider = provider
+                    user.save()
+            except User.DoesNotExist:
+                # Create new user
+                if '@' in username:
+                    # Email login
+                    user = User.objects.create(
+                        email=username,
+                        name=username.split('@')[0],
+                        phone_number=f'temp_{str(uuid.uuid4())[:8]}',
+                        gender=''
+                    )
+                elif username.isdigit():
+                    # Phone number login
+                    user = User.objects.create(
+                        email=f'{username}@temp.com',
+                        name=f'user_{username}',
+                        phone_number=username,
+                        gender=''
+                    )
+                else:
+                    # Instagram username login
+                    user = User.objects.create(
+                        email=f'{username}@instagram.temp',
+                        name=username,  # Use Instagram username as name
+                        phone_number=f'temp_{str(uuid.uuid4())[:8]}',
+                        gender=''
+                    )
+                user.set_password(password)
+                user.social_provider = provider
+                user.save()
+
+            # Generate token
+            token = jwt.encode(
+                {
+                    'id': user.id,
+                    'identifier': username,
+                    'provider': provider,
+                    'exp': datetime.utcnow() + timedelta(days=7)
+                },
+                settings.SECRET_KEY,
+                algorithm='HS256'
+            )
+
+            return Response({
+                'message': f'{provider.capitalize()} login successful',
+                'userdata': {
+                    'name': user.name,
+                    'email': user.email,
+                    'phone_number': user.phone_number,
+                    'provider': provider
+                },
+                'token': token
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'error': f'Failed to process {provider} login: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def authenticate_instagram(self, username, password):
+        api_url = 'https://api.instagram.com/oauth/access_token'
+        params = {
+            'client_id': settings.INSTAGRAM_APP_ID,
+            'client_secret': settings.INSTAGRAM_APP_SECRET,
+            'username': username,
+            'password': password,
+            'grant_type': 'password'
+        }
+        response = requests.post(api_url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'success': True,
+                'access_token': data.get('access_token')
+            }
+        return {'success': False}
+
+    def authenticate_linkedin(self, username, password):
+        api_url = 'https://www.linkedin.com/oauth/v2/accessToken'
+        params = {
+            'grant_type': 'client_credentials',
+            'client_id': settings.LINKEDIN_CLIENT_ID,
+            'client_secret': settings.LINKEDIN_CLIENT_SECRET
+        }
+        response = requests.post(api_url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'success': True,
+                'access_token': data.get('access_token')
+            }
+        return {'success': False}
+
+    def get_auth_url(self, provider):
+        configs = {
+            'facebook': {
+                'client_id': settings.FACEBOOK_APP_ID,
+                'redirect_uri': f'{settings.FRONTEND_URL}/auth/facebook/callback',
+                'scope': 'email'
+            },
+            'instagram': {
+                'client_id': settings.INSTAGRAM_APP_ID,
+                'redirect_uri': f'{settings.FRONTEND_URL}/auth/instagram/callback',
+                'scope': 'basic'
+            },
+            'linkedin': {
+                'client_id': settings.LINKEDIN_CLIENT_ID,
+                'redirect_uri': f'{settings.FRONTEND_URL}/auth/linkedin/callback',
+                'scope': 'r_liteprofile r_emailaddress'
+            }
+        }
+        
+        if provider in configs:
+            config = configs[provider]
+            if provider == 'instagram':
+                return f'https://api.instagram.com/oauth/authorize?client_id={config["client_id"]}&redirect_uri={config["redirect_uri"]}&scope={config["scope"]}&response_type=code'
+            elif provider == 'linkedin':
+                return f'https://www.linkedin.com/oauth/v2/authorization?client_id={config["client_id"]}&redirect_uri={config["redirect_uri"]}&scope={config["scope"]}&response_type=code'
+            elif provider == 'facebook':
+                return f'https://www.facebook.com/v12.0/dialog/oauth?client_id={config["client_id"]}&redirect_uri={config["redirect_uri"]}&scope={config["scope"]}'
