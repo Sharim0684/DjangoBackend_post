@@ -1,0 +1,4 @@
+
+FACEBOOK_APP_ID = "10091952917526567"
+FACEBOOK_APP_SECRET = "fb48b09a5d16ca133b6d8254a59ae963"
+FACEBOOK_REDIRECT_URI = 'http://localhost:8000/api/oauth/facebook/callback/'

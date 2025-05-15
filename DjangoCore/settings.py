@@ -13,7 +13,14 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from decouple import config
 from pathlib import Path
+# Removed unused User import
 
+
+# Define your custom user model here, if needed
+
+# class CustomUser(User):
+#     # Add your custom fields here
+#     pass
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,12 +53,13 @@ INSTALLED_APPS = [
     "social_django",
     "api",
     "users",
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
+    'corsheaders.middleware.CorsMiddleware',  # Must be at the top
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -113,11 +121,13 @@ SOCIAL_AUTH_LINKEDIN_OAUTH2_SECRET = config("LINKEDIN_CLIENT_SECRET")
 
 # JWT Configuration
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
     ),
 }
 
@@ -125,8 +135,10 @@ from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=14),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'USER_ID_CLAIM': 'id',  # Add this line
+    'USER_ID_FIELD': 'id',  # Add this line
 }
 
 # CORS Configuration
@@ -165,7 +177,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Kolkata"
 
 USE_I18N = True
 
@@ -181,18 +193,23 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-# Change this line from
-AUTH_USER_MODEL = 'users.User'
-# to
+# After INSTALLED_APPS
 AUTH_USER_MODEL = 'api.User'
 
 INSTAGRAM_APP_ID="1239687471059342"
 INSTAGRAM_APP_SECRET="c741ad9e4be85144837940b63d8ec5a2"
-FACEBOOK_APP_ID="1443883679928526"
-FACEBOOK_APP_SECRET="9f5ccb7f26a2cf42cf57eac227a2578f"
+# FACEBOOK_PAGE_ID = "632392123280191"
+# FACEBOOK_APP_ID="1443883679928526"
+# FACEBOOK_APP_SECRET="9f5ccb7f26a2cf42cf57eac227a2578f"
+# Meta (Facebook & Instagram) Credentials
+FACEBOOK_PAGE_ID = "632392123280191"
+FACEBOOK_APP_ID = "10091952917526567"
+FACEBOOK_APP_SECRET = "fb48b09a5d16ca133b6d8254a59ae963"
+FACEBOOK_REDIRECT_URI = 'http://localhost:8000/api/oauth/facebook/callback/'
 LINKEDIN_CLIENT_ID="86e36wve52muat"
 LINKEDIN_CLIENT_SECRET="WPL_AP1.Ll0mJ95VG9bZJSf2.WrN+Mw=="
-
+# FRONTEND_URL = 'http://localhost:5173'  
+FRONTEND_URL = 'http://localhost:8000'
 # Change these lines
 SOCIAL_AUTH_FACEBOOK_KEY = config("FACEBOOK_APP_ID")
 SOCIAL_AUTH_FACEBOOK_SECRET = config("FACEBOOK_APP_SECRET")
@@ -200,3 +217,46 @@ SOCIAL_AUTH_FACEBOOK_SECRET = config("FACEBOOK_APP_SECRET")
 # Add these lines for direct access
 FACEBOOK_CLIENT_ID = config("FACEBOOK_APP_ID")
 FACEBOOK_CLIENT_SECRET = config("FACEBOOK_APP_SECRET")
+
+
+# CORS Settings
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=14),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+}
+# Social Media Settings
+FACEBOOK_APP_ID = os.getenv('FACEBOOK_APP_ID')
+FACEBOOK_APP_SECRET = os.getenv('FACEBOOK_APP_SECRET')
+FACEBOOK_PAGE_ID = os.getenv('FACEBOOK_PAGE_ID')
+LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID')
+LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET')
+LINKEDIN_USER_ID = os.getenv('LINKEDIN_USER_ID')
+SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
+AUTH_USER_MODEL = 'api.User'  # 'app_name.model_name'

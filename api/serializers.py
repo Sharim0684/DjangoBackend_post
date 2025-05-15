@@ -3,6 +3,7 @@ from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 import re
 from .models import User, Person
+from .models import User
 
 
 class SignupSerializer(serializers.ModelSerializer):
@@ -69,3 +70,13 @@ class PersonSerializer(serializers.ModelSerializer):
         model = Person
         # Included the auto-generated primary key (id) in responses.
         fields = ("id", "name", "age", "email")
+
+
+class SocialAuthSerializer(serializers.Serializer):
+    provider = serializers.CharField()
+    access_token = serializers.CharField()
+    
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('id', 'name', 'email', 'phone_number', 'gender', 'social_provider')

@@ -1,69 +1,36 @@
-from django.contrib.auth.models import (
-    AbstractBaseUser,
-    BaseUserManager,
-    PermissionsMixin,
-    Group,
-    Permission,
-)
 from django.db import models
-from django.utils.timezone import now
+from django.contrib.auth.models import AbstractUser
+import uuid
+from django.db import migrations, models
+from django.utils import timezone
 
-
-class UserManager(BaseUserManager):
-    def create_user(self, name, email, phone_number, gender, password=None):
-        if not email:
-            raise ValueError("Users must have an email address")
-        email = self.normalize_email(email)
-        user = self.model(
-            name=name, email=email, phone_number=phone_number, gender=gender
-        )
-        user.set_password(password)
-        user.save(using=self._db)
-        return user
-
-    def create_superuser(self, name, email, phone_number, gender, password=None):
-        user = self.create_user(name, email, phone_number, gender, password)
-        user.is_staff = True
-        user.is_superuser = True
-        user.save(using=self._db)
-        return user
-
-
-class User(AbstractBaseUser, PermissionsMixin):
-    class Meta:
-        app_label = 'api'
-
-    GENDER_CHOICES = [('male', 'Male'), ('female', 'Female'), ('other', 'Other')]
-
-    name = models.CharField(max_length=100)
+class User(AbstractUser):
+    name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=15, unique=True)
-    password = models.CharField(max_length=255)
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
-    role = models.CharField(max_length=50, default="user")
-    profile_picture_url = models.URLField(blank=True, null=True)
-    email_verified_at = models.DateTimeField(null=True, blank=True)
-    last_login_at = models.DateTimeField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
-    is_staff = models.BooleanField(default=False)
-    is_superuser = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
-    # Add this field
-    social_provider = models.CharField(max_length=20, null=True, blank=True)  # facebook, linkedin, instagram
+    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    gender = models.CharField(max_length=10, blank=True)
+    social_provider = models.CharField(max_length=50, blank=True, null=True)
+    social_id = models.CharField(max_length=255, blank=True)
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
 
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username', 'name']
+
+    # Add related_name to fix the clash
     groups = models.ManyToManyField(
-        Group, related_name="custom_user_groups", blank=True
+        'auth.Group',
+        related_name='api_user_set',
+        blank=True,
+        help_text='The groups this user belongs to.'
     )
     user_permissions = models.ManyToManyField(
-        Permission, related_name="custom_user_permissions", blank=True
+        'auth.Permission',
+        related_name='api_user_set',
+        blank=True,
+        help_text='Specific permissions for this user.'
     )
-
-    objects = UserManager()
-
-    USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["name", "phone_number", "gender"]
 
     def __str__(self):
         return self.email
@@ -94,7 +61,7 @@ class SocialMediaCredentials(models.Model):
     ]
 
     username = models.CharField(max_length=255)
-    password = models.CharField(max_length=255)
+    password = models.CharField(max_length=1024)
     platform_name = models.CharField(max_length=50, choices=PLATFORM_CHOICES)
     platform_logo = models.URLField(blank=True, null=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_credentials')
@@ -107,3 +74,54 @@ class SocialMediaCredentials(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.platform_name}"
+
+    def save(self, *args, **kwargs):
+        if not self.username:
+            # Generate a unique username if not provided
+            base_username = self.email.split('@')[0]
+            username = base_username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}_{counter}"
+                counter += 1
+            self.username = username
+        super().save(*args, **kwargs)
+
+
+class SelectedPlatform(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    platform = models.CharField(max_length=20)  # facebook, linkedin, instagram, twitter
+    is_selected = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'platform')
+
+
+class Post(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.TextField()
+    media = models.FileField(upload_to='post_media/', null=True, blank=True)
+    platforms = models.ManyToManyField(SelectedPlatform)
+    scheduled_time = models.DateTimeField(null=True, blank=True)
+    is_published = models.BooleanField(default=False)
+    enable_likes = models.BooleanField(default=True)
+    enable_comments = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+class Credential(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    platform_name = models.CharField(max_length=50)
+    access_token = models.TextField()
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'platform_name')
+        db_table = 'credentials'
+
+    def __str__(self):
+        return f"{self.user.username}'s {self.platform_name} credential"
