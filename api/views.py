@@ -564,513 +564,118 @@ class TokenManagementMixin:
             return response.json().get('access_token')
         return None
 
-# class CreatePostView(APIView):
-#     authentication_classes = [MultiPlatformTokenAuthentication]
-#     permission_classes = [IsAuthenticated]
-
-#     def post(self, request):
-#         content = request.data.get('content', '')
-#         enable_likes = request.data.get('enable_likes', True)
-#         enable_comments = request.data.get('enable_comments', True)
-#         media_file = request.FILES.get('media')
-
-#         try:
-#             # Create post instance
-#             post = Post.objects.create(
-#                 user=request.user,
-#                 content=content,
-#                 media=media_file,
-#                 is_published=False,
-#                 enable_likes=enable_likes,
-#                 enable_comments=enable_comments
-#             )
-
-#             errors = []
-#             is_published = False
-
-#             # Get selected platforms
-#             selected_platforms = SelectedPlatform.objects.filter(
-#                 user=request.user,
-#                 is_selected=True
-#             )
-
-#             for platform in selected_platforms:
-#                 try:
-#                     credentials = Credential.objects.get(
-#                         user=request.user,
-#                         platform_name=platform.platform
-#                     )
-
-#                     if platform.platform == 'facebook':
-#                         # Facebook posting logic
-#                         graph = facebook.GraphAPI(access_token=credentials.access_token)
-                        
-#                         if media_file:
-#                             with open(post.media.path, 'rb') as image:
-#                                 response = graph.put_photo(
-#                                     image=image,
-#                                     message=content
-#                                 )
-#                                 if response and 'id' in response:
-#                                     is_published = True
-#                                 else:
-#                                     errors.append("Failed to post to Facebook")
-#                         else:
-#                             response = graph.put_object(
-#                                 parent_object='me',
-#                                 connection_name='feed',
-#                                 message=content
-#                             )
-#                             if response and 'id' in response:
-#                                 is_published = True
-#                             else:
-#                                 errors.append("Failed to post to Facebook")
-
-#                     elif platform.platform == 'linkedin':
-#                         # LinkedIn posting logic
-#                         headers = {
-#                             'Authorization': f'Bearer {credentials.access_token}',
-#                             'Content-Type': 'application/json',
-#                             'X-Restli-Protocol-Version': '2.0.0',
-#                             'LinkedIn-Version': '202308'  # Add API version header
-#                         }
-
-#                         # Get user's LinkedIn URN with proper API version
-#                         try:
-#                             user_info_url = 'https://api.linkedin.com/v2/me'
-#                             user_response = requests.get(
-#                                 user_info_url, 
-#                                 headers=headers
-#                             )
-                            
-#                             if user_response.status_code == 401:
-#                                 errors.append("LinkedIn access token expired or invalid")
-#                                 continue
-#                             elif user_response.status_code == 403:
-#                                 errors.append("LinkedIn permission denied. Please check app permissions")
-#                                 continue
-#                             elif user_response.status_code != 200:
-#                                 errors.append(f"Failed to get LinkedIn user info: {user_response.text}")
-#                                 continue
-                            
-#                             user_urn = user_response.json().get('id')
-#                             if not user_urn:
-#                                 errors.append("LinkedIn user ID not found in response")
-#                                 continue
-
-#                             if media_file:
-#                                 # Register upload
-#                                 register_upload_url = 'https://api.linkedin.com/v2/assets?action=registerUpload'
-#                                 register_data = {
-#                                     "registerUploadRequest": {
-#                                         "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-#                                         "owner": f"urn:li:person:{user_urn}",
-#                                         "serviceRelationships": [{
-#                                             "relationshipType": "OWNER",
-#                                             "identifier": "urn:li:userGeneratedContent"
-#                                         }]
-#                                     }
-#                                 }
-                                
-#                                 upload_response = requests.post(
-#                                     register_upload_url, 
-#                                     headers=headers, 
-#                                     json=register_data
-#                                 )
-
-#                                 if upload_response.status_code != 200:
-#                                     errors.append("Failed to register LinkedIn media upload")
-#                                     continue
-
-#                                 # Get upload URL and asset URN
-#                                 upload_url = upload_response.json()['value']['uploadMechanism']['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest']['uploadUrl']
-#                                 asset_urn = upload_response.json()['value']['asset']
-
-#                                 # Upload the image
-#                                 with open(post.media.path, 'rb') as image:
-#                                     files = {'file': image}
-#                                     image_upload_response = requests.post(upload_url, files=files)
-                                    
-#                                     if image_upload_response.status_code != 201:
-#                                         errors.append("Failed to upload image to LinkedIn")
-#                                         continue
-
-#                                 # Create post with image
-#                                 post_url = 'https://api.linkedin.com/v2/ugcPosts'
-#                                 post_data = {
-#                                     "author": f"urn:li:person:{user_urn}",
-#                                     "lifecycleState": "PUBLISHED",
-#                                     "specificContent": {
-#                                         "com.linkedin.ugc.ShareContent": {
-#                                             "shareCommentary": {
-#                                                 "text": content
-#                                             },
-#                                             "shareMediaCategory": "IMAGE",
-#                                             "media": [{
-#                                                 "status": "READY",
-#                                                 "description": {
-#                                                     "text": content
-#                                                 },
-#                                                 "media": asset_urn,
-#                                             }]
-#                                         }
-#                                     },
-#                                     "visibility": {
-#                                         "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-#                                     }
-#                                 }
-#                             else:
-#                                 # Text-only post
-#                                 post_url = 'https://api.linkedin.com/v2/ugcPosts'
-#                                 post_data = {
-#                                     "author": f"urn:li:person:{user_urn}",
-#                                     "lifecycleState": "PUBLISHED",
-#                                     "specificContent": {
-#                                         "com.linkedin.ugc.ShareContent": {
-#                                             "shareCommentary": {
-#                                                 "text": content
-#                                             },
-#                                             "shareMediaCategory": "NONE"
-#                                         }
-#                                     },
-#                                     "visibility": {
-#                                         "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-#                                     }
-#                                 }
-
-#                             response = requests.post(post_url, headers=headers, json=post_data)
-#                             if response.status_code in [200, 201]:
-#                                 is_published = True
-#                             else:
-#                                 errors.append(f"Failed to post to LinkedIn: {response.text}")
-
-#                         except requests.exceptions.RequestException as e:
-#                             errors.append(f"Network error while posting to LinkedIn: {str(e)}")
-#                         except Exception as e:
-#                             errors.append(f"Error posting to LinkedIn: {str(e)}")
-
-#                 except Credential.DoesNotExist:
-#                     errors.append(f"No credentials found for {platform.platform}")
-#                 except Exception as e:
-#                     errors.append(f"Error posting to {platform.platform}: {str(e)}")
-
-#             # Update post status
-#             post.is_published = is_published
-#             post.save()
-
-#             return Response({
-#                 'message': 'Post created successfully' if is_published else 'Post created but failed to publish',
-#                 'post_id': post.id,
-#                 'is_published': is_published,
-#                 'errors': errors
-#             })
-
-#         except Exception as e:
-#             return Response({
-#                 'error': f'Failed to create post: {str(e)}'
-#             }, status=status.HTTP_400_BAD_REQUEST)
-
-#     def post_to_facebook(self, post, user):
-#         try:
-#             # Get Facebook credentials
-#             cred = Credential.objects.get(user=user, platform_name='facebook')
-            
-#             # Create media attachment if exists
-#             attachment = {}
-#             if post.media:
-#                 if self._is_image(post.media.name):
-#                     attachment = {
-#                         'media_fbid': self._upload_photo_to_facebook(post.media, cred.access_token)
-#                     }
-#                 elif self._is_video(post.media.name):
-#                     attachment = {
-#                         'media_fbid': self._upload_video_to_facebook(post.media, cred.access_token)
-#                     }
-
-#             # Post to Facebook
-#             graph = facebook.GraphAPI(access_token=cred.access_token)
-#             graph.put_object(
-#                 parent_object='me',
-#                 connection_name='feed',
-#                 message=post.content,
-#                 **attachment
-#             )
-#         except Exception as e:
-#             raise Exception(f"Failed to post to Facebook: {str(e)}")
-
-#     def post_to_linkedin(self, post, user):
-#         try:
-#             # Get LinkedIn credentials
-#             cred = Credential.objects.get(user=user, platform_name='linkedin')
-            
-#             # Create media share if exists
-#             media_asset = None
-#             if post.media:
-#                 if self._is_image(post.media.name):
-#                     media_asset = self._upload_image_to_linkedin(post.media, cred.access_token)
-#                 elif self._is_video(post.media.name):
-#                     media_asset = self._upload_video_to_linkedin(post.media, cred.access_token)
-
-#             # Post to LinkedIn
-#             headers = {
-#                 'Authorization': f'Bearer {cred.access_token}',
-#                 'Content-Type': 'application/json',
-#             }
-            
-#             payload = {
-#                 'author': f'urn:li:person:{user.social_id}',
-#                 'lifecycleState': 'PUBLISHED',
-#                 'specificContent': {
-#                     'com.linkedin.ugc.ShareContent': {
-#                         'shareCommentary': {
-#                             'text': post.content
-#                         },
-#                         'shareMediaCategory': 'NONE'
-#                     }
-#                 },
-#                 'visibility': {
-#                     'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
-#                 }
-#             }
-
-#             if media_asset:
-#                 payload['specificContent']['com.linkedin.ugc.ShareContent']['shareMediaCategory'] = 'IMAGE' if self._is_image(post.media.name) else 'VIDEO'
-#                 payload['specificContent']['com.linkedin.ugc.ShareContent']['media'] = [media_asset]
-
-#             response = requests.post(
-#                 'https://api.linkedin.com/v2/ugcPosts',
-#                 headers=headers,
-#                 json=payload
-#             )
-            
-#             if response.status_code != 201:
-#                 raise Exception(f"LinkedIn API error: {response.text}")
-
-#         except Exception as e:
-#             raise Exception(f"Failed to post to LinkedIn: {str(e)}")
-
-#     def _is_image(self, filename):
-#         return filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))
-
-#     def _is_video(self, filename):
-#         return filename.lower().endswith(('.mp4', '.mov', '.avi', '.wmv'))
-
-#     def _get_page_access_token(self, user_access_token):
-#         """Get Facebook page access token."""
-#         url = f"https://graph.facebook.com/v22.0/{settings.FACEBOOK_PAGE_ID}?fields=access_token&access_token={user_access_token}"
-#         response = requests.get(url)
-#         if response.status_code == 200:
-#             return response.json().get('access_token')
-#         return None
-
-#     def _publish_post(self, post):
-#         publishing_errors = []
-#         for platform in post.platforms.all():
-#             try:
-#                 credentials = SocialMediaCredentials.objects.get(
-#                     user=post.user,
-#                     platform_name=platform.platform
-#                 )
-
-#                 if platform.platform == 'facebook':
-#                     access_token = self.get_valid_facebook_token(credentials)
-#                     if not access_token:
-#                         publishing_errors.append('Failed to get valid Facebook access token')
-#                         continue
-
-#                     page_token = self._get_page_access_token(access_token)
-#                     if not page_token:
-#                         publishing_errors.append('Failed to get Facebook page access token')
-#                         continue
-
-#                     url = f"https://graph.facebook.com/v22.0/{settings.FACEBOOK_PAGE_ID}/feed"
-#                     params = {
-#                         "message": post.content,
-#                         "access_token": page_token
-#                     }
-                    
-#                     if post.media:
-#                         media_url = f"{settings.SITE_URL}{post.media.url}"
-#                         params["link"] = media_url
-
-#                     response = requests.post(url, params=params)
-#                     if response.status_code != 200:
-#                         publishing_errors.append(f'Facebook posting failed: {response.text}')
-
-#                 elif platform.platform == 'linkedin':
-#                     access_token = self.get_valid_linkedin_token(credentials)
-#                     if not access_token:
-#                         publishing_errors.append('Failed to get valid LinkedIn access token')
-#                         continue
-
-#                     headers = {
-#                         "Authorization": f"Bearer {access_token}",
-#                         "Content-Type": "application/json",
-#                         "X-Restli-Protocol-Version": "2.0.0"
-#                     }
-                    
-#                     post_data = {
-#                         "author": f"urn:li:person:{settings.LINKEDIN_USER_ID}",
-#                         "lifecycleState": "PUBLISHED",
-#                         "specificContent": {
-#                             "com.linkedin.ugc.ShareContent": {
-#                                 "shareCommentary": {
-#                                     "text": post.content
-#                                 },
-#                                 "shareMediaCategory": "NONE"
-#                             }
-#                         },
-#                         "visibility": {
-#                             "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-#                         }
-#                     }
-                    
-#                     if post.media:
-#                         media_asset = self._upload_media_to_linkedin(post.media, access_token)
-#                         if media_asset:
-#                             post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["shareMediaCategory"] = "IMAGE"
-#                             post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [{
-#                                 "status": "READY",
-#                                 "media": media_asset,
-#                                 "title": {
-#                                     "text": "Image"
-#                                 }
-#                             }]
-
-#                     response = requests.post(
-#                         "https://api.linkedin.com/v2/ugcPosts",
-#                         headers=headers,
-#                         json=post_data
-#                     )
-                    
-#                     if response.status_code not in [200, 201]:
-#                         publishing_errors.append(f'LinkedIn posting failed: {response.text}')
-
-#             except SocialMediaCredentials.DoesNotExist:
-#                 publishing_errors.append(f'No credentials found for {platform.platform}')
-#             except Exception as e:
-#                 publishing_errors.append(f'Error posting to {platform.platform}: {str(e)}')
-
-#         return publishing_errors
-
-#     def _get_page_access_token(self, user_access_token):
-#         try:
-#             url = f"https://graph.facebook.com/v22.0/{settings.FACEBOOK_PAGE_ID}?fields=access_token&access_token={user_access_token}"
-#             response = requests.get(url)
-#             if response.status_code == 200:
-#                 return response.json().get('access_token')
-#             return None
-#         except Exception:
-#             return None
-
-#     def _upload_media_to_linkedin(self, media_file, access_token):
-#         try:
-#             # Register media upload
-#             register_headers = {
-#                 "Authorization": f"Bearer {access_token}",
-#                 "Content-Type": "application/json",
-#                 "X-Restli-Protocol-Version": "2.0.0"
-#             }
-            
-#             register_data = {
-#                 "registerUploadRequest": {
-#                     "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-#                     "owner": f"urn:li:person:{settings.LINKEDIN_USER_ID}",
-#                     "serviceRelationships": [{
-#                         "relationshipType": "OWNER",
-#                         "identifier": "urn:li:userGeneratedContent"
-#                     }]
-#                 }
-#             }
-            
-#             response = requests.post(
-#                 "https://api.linkedin.com/v2/assets?action=registerUpload",
-#                 headers=register_headers,
-#                 json=register_data
-#             )
-            
-#             if response.status_code != 200:
-#                 return None
-                
-#             upload_url = response.json()["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
-#             asset = response.json()["value"]["asset"]
-            
-#             # Upload the image
-#             with media_file.open('rb') as image:
-#                 upload_response = requests.put(
-#                     upload_url,
-#                     data=image,
-#                     headers={
-#                         "Authorization": f"Bearer {access_token}"
-#                     }
-#                 )
-                
-#                 if upload_response.status_code == 201:
-#                     return asset
-                    
-#             return None
-#         except Exception:
-#             return None
 
 class CreatePostView(APIView):
     authentication_classes = [MultiPlatformTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        content = request.data.get('content', '')
-        enable_likes = request.data.get('enable_likes', True)
-        enable_comments = request.data.get('enable_comments', True)
+        selected_platform = SelectedPlatform.objects.filter(
+            user=request.user,
+            is_selected=True
+        ).first()
+
+        if not selected_platform:
+            return Response({
+                'error': 'No platform selected'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        content = request.data.get('content')
         media_file = request.FILES.get('media')
+        enable_likes = request.data.get('enable_likes', False)
+        enable_comments = request.data.get('enable_comments', False)
+
+        errors = []
+        is_published = False
 
         try:
-            # Create post instance
             post = Post.objects.create(
                 user=request.user,
                 content=content,
                 media=media_file,
-                is_published=False,
                 enable_likes=enable_likes,
                 enable_comments=enable_comments
             )
 
-            errors = []
-            is_published = False
+            try:
+                credentials = Credential.objects.get(
+                    user=request.user,
+                    platform_name=selected_platform.platform
+                )
+            except Credential.DoesNotExist:
+                return Response({
+                    'error': f'Credentials not found for {selected_platform.platform}'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Get selected platforms
-            selected_platforms = SelectedPlatform.objects.filter(
-                user=request.user,
-                is_selected=True
-            )
-
-            for platform in selected_platforms:
+            if selected_platform.platform == 'facebook':
                 try:
+                    # Get Facebook credentials
                     credentials = Credential.objects.get(
                         user=request.user,
-                        platform_name=platform.platform
+                        platform_name='facebook'
                     )
+                    
+                    # Use access_token instead of password
+                    access_token = credentials.access_token
+                    
+                    if not access_token:
+                        raise Exception("No Facebook access token found")
 
-                    if platform.platform == 'linkedin':
-                        # LinkedIn posting logic with profile info
-                        headers = {
-                            'Authorization': f'Bearer {credentials.access_token}',
-                            'Content-Type': 'application/json',
-                            'X-Restli-Protocol-Version': '2.0.0',
-                            'LinkedIn-Version': '202308'
-                        }
+                    # Initialize Facebook Graph API with access token
+                    graph = facebook.GraphAPI(access_token=access_token)
+                    
+                    # Post directly to the page using the page ID
+                    page_id = '632392123280191'  # Your page ID
+                    
+                    try:
+                        if media_file:
+                            # For image posts
+                            with open(post.media.path, 'rb') as image:
+                                response = graph.put_photo(
+                                    image=image,
+                                    message=content,
+                                    album_path=f'{page_id}/photos'
+                                )
+                        else:
+                            # For text-only posts
+                            response = graph.put_object(
+                                parent_object=page_id,
+                                connection_name='feed',
+                                message=content
+                            )
 
-                        # Get user's LinkedIn URN using email
-                        user_info_url = 'https://api.linkedin.com/v2/userinfo'
-                        user_response = requests.get(user_info_url, headers=headers)
+                        if response and 'id' in response:
+                            post.facebook_post_id = response['id']
+                            post.save()
+                            is_published = True
+                        else:
+                            errors.append("Failed to create Facebook post")
+
+                    except facebook.GraphAPIError as e:
+                        errors.append(f"Facebook API Error: {str(e)}")
                         
-                        if user_response.status_code != 200:
-                            errors.append(f"Failed to get LinkedIn user info: {user_response.text}")
-                            continue
-                        
+                except Exception as e:
+                    errors.append(f"Facebook error: {str(e)}")
+
+            elif selected_platform.platform == 'linkedin':
+                try:
+                    headers = {
+                        'Authorization': f'Bearer {credentials.access_token}',
+                        'Content-Type': 'application/json',
+                        'X-Restli-Protocol-Version': '2.0.0',
+                        'LinkedIn-Version': '202308'
+                    }
+
+                    user_info_url = 'https://api.linkedin.com/v2/userinfo'
+                    user_response = requests.get(user_info_url, headers=headers)
+
+                    if user_response.status_code != 200:
+                        errors.append(f"Failed to get LinkedIn user info: {user_response.text}")
+                    else:
                         user_data = user_response.json()
-                        user_urn = user_data.get('sub')  # Using sub as URN from OAuth userinfo
+                        user_urn = user_data.get('sub')
 
                         if media_file:
-                            # Register upload
                             register_upload_url = 'https://api.linkedin.com/v2/assets?action=registerUpload'
                             register_data = {
                                 "registerUploadRequest": {
@@ -1082,74 +687,71 @@ class CreatePostView(APIView):
                                     }]
                                 }
                             }
-                            
-                            upload_response = requests.post(
-                                register_upload_url, 
-                                headers=headers, 
-                                json=register_data
-                            )
+                            upload_response = requests.post(register_upload_url, headers=headers, json=register_data)
 
-                            if upload_response.status_code != 200:
+                            if upload_response.status_code == 200:
+                                upload_data = upload_response.json()
+                                upload_url = upload_data['value']['uploadMechanism']['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest']['uploadUrl']
+                                asset_urn = upload_data['value']['asset']
+
+                                with open(post.media.path, 'rb') as image:
+                                    image_headers = {
+                                        'Authorization': f'Bearer {credentials.access_token}'
+                                    }
+                                    image_upload_response = requests.post(upload_url, headers=image_headers, files={'file': image})
+
+                                    if image_upload_response.status_code == 201:
+                                        post_url = 'https://api.linkedin.com/v2/ugcPosts'
+                                        post_data = {
+                                            "author": f"urn:li:person:{user_urn}",
+                                            "lifecycleState": "PUBLISHED",
+                                            "specificContent": {
+                                                "com.linkedin.ugc.ShareContent": {
+                                                    "shareCommentary": {"text": content},
+                                                    "shareMediaCategory": "IMAGE",
+                                                    "media": [{
+                                                        "status": "READY",
+                                                        "description": {"text": content},
+                                                        "media": asset_urn,
+                                                        "title": {"text": f"Post by {user_data.get('name', 'User')}"}
+                                                    }]
+                                                }
+                                            },
+                                            "visibility": {
+                                                "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+                                            }
+                                        }
+                                        response = requests.post(post_url, headers=headers, json=post_data)
+                                        if response.status_code in [200, 201]:
+                                            is_published = True
+                                        else:
+                                            errors.append(f"Failed to post to LinkedIn: {response.text}")
+                                    else:
+                                        errors.append(f"Failed to upload image to LinkedIn: {image_upload_response.text}")
+                            else:
                                 errors.append(f"Failed to register LinkedIn media upload: {upload_response.text}")
-                                continue
-
-                            # Get upload URL and asset URN
-                            upload_data = upload_response.json()
-                            upload_url = upload_data['value']['uploadMechanism']['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest']['uploadUrl']
-                            asset_urn = upload_data['value']['asset']
-
-                            # Upload the image
-                            with open(post.media.path, 'rb') as image:
-                                image_headers = {
-                                    'Authorization': f'Bearer {credentials.access_token}'
-                                }
-                                files = {'file': image}
-                                image_upload_response = requests.post(upload_url, headers=image_headers, files=files)
-                                
-                                if image_upload_response.status_code != 201:
-                                    errors.append(f"Failed to upload image to LinkedIn: {image_upload_response.text}")
-                                    continue
-
-                            # Create post with image
-                            post_url = 'https://api.linkedin.com/v2/ugcPosts'
+                        else:
                             post_data = {
                                 "author": f"urn:li:person:{user_urn}",
                                 "lifecycleState": "PUBLISHED",
                                 "specificContent": {
                                     "com.linkedin.ugc.ShareContent": {
-                                        "shareCommentary": {
-                                            "text": content
-                                        },
-                                        "shareMediaCategory": "IMAGE",
-                                        "media": [{
-                                            "status": "READY",
-                                            "description": {
-                                                "text": content
-                                            },
-                                            "media": asset_urn,
-                                            "title": {
-                                                "text": f"Post by {user_data.get('name', 'User')}"
-                                            }
-                                        }]
+                                        "shareCommentary": {"text": content},
+                                        "shareMediaCategory": "NONE"
                                     }
                                 },
                                 "visibility": {
                                     "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
                                 }
                             }
-
-                            response = requests.post(post_url, headers=headers, json=post_data)
+                            response = requests.post('https://api.linkedin.com/v2/ugcPosts', headers=headers, json=post_data)
                             if response.status_code in [200, 201]:
                                 is_published = True
                             else:
                                 errors.append(f"Failed to post to LinkedIn: {response.text}")
-
-                except Credential.DoesNotExist:
-                    errors.append(f"No credentials found for {platform.platform}")
                 except Exception as e:
-                    errors.append(f"Error posting to {platform.platform}: {str(e)}")
+                    errors.append(f"Error posting to LinkedIn: {str(e)}")
 
-            # Update post status
             post.is_published = is_published
             post.save()
 
@@ -1165,85 +767,6 @@ class CreatePostView(APIView):
                 'error': f'Failed to create post: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-    def post_to_facebook(self, post, user):
-        try:
-            # Get Facebook credentials
-            cred = Credential.objects.get(user=user, platform_name='facebook')
-            
-            # Create media attachment if exists
-            attachment = {}
-            if post.media:
-                if self._is_image(post.media.name):
-                    attachment = {
-                        'media_fbid': self._upload_photo_to_facebook(post.media, cred.access_token)
-                    }
-                elif self._is_video(post.media.name):
-                    attachment = {
-                        'media_fbid': self._upload_video_to_facebook(post.media, cred.access_token)
-                    }
-
-            # Post to Facebook
-            graph = facebook.GraphAPI(access_token=cred.access_token)
-            graph.put_object(
-                parent_object='me',
-                connection_name='feed',
-                message=post.content,
-                **attachment
-            )
-        except Exception as e:
-            raise Exception(f"Failed to post to Facebook: {str(e)}")
-
-    def post_to_linkedin(self, post, user):
-        try:
-            # Get LinkedIn credentials
-            cred = Credential.objects.get(user=user, platform_name='linkedin')
-            
-            # Create media share if exists
-            media_asset = None
-            if post.media:
-                if self._is_image(post.media.name):
-                    media_asset = self._upload_image_to_linkedin(post.media, cred.access_token)
-                elif self._is_video(post.media.name):
-                    media_asset = self._upload_video_to_linkedin(post.media, cred.access_token)
-
-            # Post to LinkedIn
-            headers = {
-                'Authorization': f'Bearer {cred.access_token}',
-                'Content-Type': 'application/json',
-            }
-            
-            payload = {
-                'author': f'urn:li:person:{user.social_id}',
-                'lifecycleState': 'PUBLISHED',
-                'specificContent': {
-                    'com.linkedin.ugc.ShareContent': {
-                        'shareCommentary': {
-                            'text': post.content
-                        },
-                        'shareMediaCategory': 'NONE'
-                    }
-                },
-                'visibility': {
-                    'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
-                }
-            }
-
-            if media_asset:
-                payload['specificContent']['com.linkedin.ugc.ShareContent']['shareMediaCategory'] = 'IMAGE' if self._is_image(post.media.name) else 'VIDEO'
-                payload['specificContent']['com.linkedin.ugc.ShareContent']['media'] = [media_asset]
-
-            response = requests.post(
-                'https://api.linkedin.com/v2/ugcPosts',
-                headers=headers,
-                json=payload
-            )
-            
-            if response.status_code != 201:
-                raise Exception(f"LinkedIn API error: {response.text}")
-
-        except Exception as e:
-            raise Exception(f"Failed to post to LinkedIn: {str(e)}")
-
     def _is_image(self, filename):
         return filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))
 
@@ -1251,161 +774,14 @@ class CreatePostView(APIView):
         return filename.lower().endswith(('.mp4', '.mov', '.avi', '.wmv'))
 
     def _get_page_access_token(self, user_access_token):
-        """Get Facebook page access token."""
-        url = f"https://graph.facebook.com/v22.0/{settings.FACEBOOK_PAGE_ID}?fields=access_token&access_token={user_access_token}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json().get('access_token')
-        return None
-
-    def _publish_post(self, post):
-        publishing_errors = []
-        for platform in post.platforms.all():
-            try:
-                credentials = SocialMediaCredentials.objects.get(
-                    user=post.user,
-                    platform_name=platform.platform
-                )
-
-                if platform.platform == 'facebook':
-                    access_token = self.get_valid_facebook_token(credentials)
-                    if not access_token:
-                        publishing_errors.append('Failed to get valid Facebook access token')
-                        continue
-
-                    page_token = self._get_page_access_token(access_token)
-                    if not page_token:
-                        publishing_errors.append('Failed to get Facebook page access token')
-                        continue
-
-                    url = f"https://graph.facebook.com/v22.0/{settings.FACEBOOK_PAGE_ID}/feed"
-                    params = {
-                        "message": post.content,
-                        "access_token": page_token
-                    }
-                    
-                    if post.media:
-                        media_url = f"{settings.SITE_URL}{post.media.url}"
-                        params["link"] = media_url
-
-                    response = requests.post(url, params=params)
-                    if response.status_code != 200:
-                        publishing_errors.append(f'Facebook posting failed: {response.text}')
-
-                elif platform.platform == 'linkedin':
-                    access_token = self.get_valid_linkedin_token(credentials)
-                    if not access_token:
-                        publishing_errors.append('Failed to get valid LinkedIn access token')
-                        continue
-
-                    headers = {
-                        "Authorization": f"Bearer {access_token}",
-                        "Content-Type": "application/json",
-                        "X-Restli-Protocol-Version": "2.0.0"
-                    }
-                    
-                    post_data = {
-                        "author": f"urn:li:person:{settings.LINKEDIN_USER_ID}",
-                        "lifecycleState": "PUBLISHED",
-                        "specificContent": {
-                            "com.linkedin.ugc.ShareContent": {
-                                "shareCommentary": {
-                                    "text": post.content
-                                },
-                                "shareMediaCategory": "NONE"
-                            }
-                        },
-                        "visibility": {
-                            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-                        }
-                    }
-                    
-                    if post.media:
-                        media_asset = self._upload_media_to_linkedin(post.media, access_token)
-                        if media_asset:
-                            post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["shareMediaCategory"] = "IMAGE"
-                            post_data["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [{
-                                "status": "READY",
-                                "media": media_asset,
-                                "title": {
-                                    "text": "Image"
-                                }
-                            }]
-
-                    response = requests.post(
-                        "https://api.linkedin.com/v2/ugcPosts",
-                        headers=headers,
-                        json=post_data
-                    )
-                    
-                    if response.status_code not in [200, 201]:
-                        publishing_errors.append(f'LinkedIn posting failed: {response.text}')
-
-            except SocialMediaCredentials.DoesNotExist:
-                publishing_errors.append(f'No credentials found for {platform.platform}')
-            except Exception as e:
-                publishing_errors.append(f'Error posting to {platform.platform}: {str(e)}')
-
-        return publishing_errors
-
-    def _get_page_access_token(self, user_access_token):
         try:
             url = f"https://graph.facebook.com/v22.0/{settings.FACEBOOK_PAGE_ID}?fields=access_token&access_token={user_access_token}"
             response = requests.get(url)
             if response.status_code == 200:
                 return response.json().get('access_token')
-            return None
         except Exception:
-            return None
-
-    def _upload_media_to_linkedin(self, media_file, access_token):
-        try:
-            # Register media upload
-            register_headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-                "X-Restli-Protocol-Version": "2.0.0"
-            }
-            
-            register_data = {
-                "registerUploadRequest": {
-                    "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-                    "owner": f"urn:li:person:{settings.LINKEDIN_USER_ID}",
-                    "serviceRelationships": [{
-                        "relationshipType": "OWNER",
-                        "identifier": "urn:li:userGeneratedContent"
-                    }]
-                }
-            }
-            
-            response = requests.post(
-                "https://api.linkedin.com/v2/assets?action=registerUpload",
-                headers=register_headers,
-                json=register_data
-            )
-            
-            if response.status_code != 200:
-                return None
-                
-            upload_url = response.json()["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
-            asset = response.json()["value"]["asset"]
-            
-            # Upload the image
-            with media_file.open('rb') as image:
-                upload_response = requests.put(
-                    upload_url,
-                    data=image,
-                    headers={
-                        "Authorization": f"Bearer {access_token}"
-                    }
-                )
-                
-                if upload_response.status_code == 201:
-                    return asset
-                    
-            return None
-        except Exception:
-            return None
+            pass
+        return None
 
 
 class MultiPlatformTokenAuthentication(TokenAuthentication):
